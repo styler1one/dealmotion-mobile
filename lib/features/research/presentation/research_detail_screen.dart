@@ -1,0 +1,624 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/theme/app_theme.dart';
+import '../domain/research_model.dart';
+import '../providers/research_provider.dart';
+
+/// Research Detail Screen - View research brief and full content
+class ResearchDetailScreen extends ConsumerWidget {
+  final String researchId;
+
+  const ResearchDetailScreen({
+    super.key,
+    required this.researchId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final researchAsync = ref.watch(researchDetailProvider(researchId));
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? AppTheme.slate950 : AppTheme.slate50,
+      body: researchAsync.when(
+        data: (research) {
+          if (research == null) {
+            return _ErrorView(
+              message: 'Research not found',
+              onRetry: () => ref.refresh(researchDetailProvider(researchId)),
+            );
+          }
+          return _ResearchContent(research: research, isDark: isDark);
+        },
+        loading: () => const _LoadingView(),
+        error: (error, _) => _ErrorView(
+          message: error.toString(),
+          onRetry: () => ref.refresh(researchDetailProvider(researchId)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Research content view
+class _ResearchContent extends StatelessWidget {
+  final Research research;
+  final bool isDark;
+
+  const _ResearchContent({
+    required this.research,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      slivers: [
+        // App Bar
+        SliverAppBar(
+          backgroundColor: isDark ? AppTheme.slate900 : Colors.white,
+          pinned: true,
+          expandedHeight: 120,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () => _shareResearch(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.open_in_browser),
+              onPressed: () => _openInWeb(context),
+            ),
+          ],
+          flexibleSpace: FlexibleSpaceBar(
+            titlePadding: const EdgeInsets.only(left: 56, bottom: 16, right: 56),
+            title: Text(
+              research.companyName,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : AppTheme.slate900,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            background: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryBlue.withValues(alpha: 0.1),
+                    isDark ? AppTheme.slate900 : Colors.white,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Status banner if processing
+        if (research.isProcessing)
+          SliverToBoxAdapter(
+            child: _ProcessingBanner(research: research),
+          ),
+
+        // Failed banner
+        if (research.isFailed)
+          SliverToBoxAdapter(
+            child: _FailedBanner(),
+          ),
+
+        // Company info
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: _CompanyHeader(research: research, isDark: isDark),
+          ),
+        ),
+
+        // Brief section
+        if (research.brief != null && research.brief!.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _ContentSection(
+                title: '📋 Brief',
+                content: research.brief!,
+                isDark: isDark,
+              ),
+            ),
+          ),
+
+        // Full content sections
+        if (research.fullContent != null && research.fullContent!.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: _FullContentView(
+                content: research.fullContent!,
+                isDark: isDark,
+              ),
+            ),
+          ),
+
+        // Bottom padding
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
+      ],
+    );
+  }
+
+  void _shareResearch(BuildContext context) {
+    final text = '''
+Research: ${research.companyName}
+
+${research.brief ?? 'No brief available'}
+
+Generated by DealMotion
+''';
+    Share.share(text, subject: 'Research: ${research.companyName}');
+  }
+
+  void _openInWeb(BuildContext context) {
+    // Open in web app
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Opening in web app...'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+/// Company header with website link
+class _CompanyHeader extends StatelessWidget {
+  final Research research;
+  final bool isDark;
+
+  const _CompanyHeader({
+    required this.research,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.slate900 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppTheme.slate800 : AppTheme.slate200,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Center(
+              child: Text(
+                research.companyName.isNotEmpty
+                    ? research.companyName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  research.companyName,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : AppTheme.slate900,
+                  ),
+                ),
+                if (research.website != null) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _launchUrl(research.website!),
+                    child: Text(
+                      research.website!
+                          .replaceFirst('https://', '')
+                          .replaceFirst('http://', ''),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.primaryBlue,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _StatusBadge(status: research.status),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+}
+
+/// Status badge
+class _StatusBadge extends StatelessWidget {
+  final String status;
+
+  const _StatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    String label;
+    IconData icon;
+
+    switch (status) {
+      case 'completed':
+        color = AppTheme.successGreen;
+        label = 'Complete';
+        icon = Icons.check_circle;
+        break;
+      case 'processing':
+      case 'pending':
+        color = AppTheme.primaryBlue;
+        label = 'Processing';
+        icon = Icons.hourglass_empty;
+        break;
+      case 'failed':
+        color = AppTheme.errorRed;
+        label = 'Failed';
+        icon = Icons.error;
+        break;
+      default:
+        color = AppTheme.slate500;
+        label = status;
+        icon = Icons.help;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Content section
+class _ContentSection extends StatelessWidget {
+  final String title;
+  final String content;
+  final bool isDark;
+
+  const _ContentSection({
+    required this.title,
+    required this.content,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.slate900 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppTheme.slate800 : AppTheme.slate200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : AppTheme.slate900,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.copy, size: 18, color: AppTheme.slate400),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            content,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.6,
+              color: isDark ? AppTheme.slate300 : AppTheme.slate700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full content view with markdown-like rendering
+class _FullContentView extends StatelessWidget {
+  final String content;
+  final bool isDark;
+
+  const _FullContentView({
+    required this.content,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Simple markdown-like parsing
+    final sections = _parseSections(content);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sections.map((section) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _ContentSection(
+            title: section['title'] ?? '',
+            content: section['content'] ?? '',
+            isDark: isDark,
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  List<Map<String, String>> _parseSections(String content) {
+    final sections = <Map<String, String>>[];
+    final lines = content.split('\n');
+    String currentTitle = '📄 Details';
+    StringBuffer currentContent = StringBuffer();
+
+    for (final line in lines) {
+      if (line.startsWith('## ') || line.startsWith('# ')) {
+        // Save previous section
+        if (currentContent.isNotEmpty) {
+          sections.add({
+            'title': currentTitle,
+            'content': currentContent.toString().trim(),
+          });
+        }
+        // Start new section
+        currentTitle = line.replaceFirst(RegExp(r'^#+\s*'), '');
+        currentContent = StringBuffer();
+      } else {
+        currentContent.writeln(line);
+      }
+    }
+
+    // Add last section
+    if (currentContent.isNotEmpty) {
+      sections.add({
+        'title': currentTitle,
+        'content': currentContent.toString().trim(),
+      });
+    }
+
+    return sections.isEmpty
+        ? [
+            {'title': '📄 Details', 'content': content}
+          ]
+        : sections;
+  }
+}
+
+/// Processing banner
+class _ProcessingBanner extends StatelessWidget {
+  final Research research;
+
+  const _ProcessingBanner({required this.research});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Research in Progress',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'This usually takes 1-2 minutes',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.slate600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Failed banner
+class _FailedBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.errorRed.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.errorRed.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error, color: AppTheme.errorRed),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Research Failed',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.errorRed,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Please try again or contact support',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.slate600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Loading view
+class _LoadingView extends StatelessWidget {
+  const _LoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(),
+    );
+  }
+}
+
+/// Error view
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: AppTheme.errorRed),
+            const SizedBox(height: 16),
+            Text(
+              'Something went wrong',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.slate900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.slate500),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

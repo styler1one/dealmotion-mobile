@@ -1,0 +1,82 @@
+name: dealmotion_mobile
+description: "DealMotion Mobile Recording App - Record in-person meetings for AI analysis"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10+1
+  cached_network_image: ^3.4.1
+  shimmer: ^3.0.0
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Supabase Auth & Database
+  supabase_flutter: ^2.8.2
+
+  # Audio Recording
+  flutter_sound: ^9.16.3
+  permission_handler: ^11.3.1
+  audio_waveforms: ^1.2.0
+
+  # Background Tasks
+  flutter_foreground_task: ^8.13.2
+  # workmanager temporarily disabled - will use manual upload service
+  # workmanager: ^0.5.2
+
+  # Local Storage
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.2
+
+  # Networking
+  dio: ^5.7.0
+  connectivity_plus: ^6.1.1
+
+  # Push Notifications
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.1.6
+  flutter_local_notifications: ^18.0.1
+
+  # Utilities
+  intl: ^0.19.0
+  share_plus: ^10.1.3
+  url_launcher: ^6.3.1
+  path_provider: ^2.1.5
+  uuid: ^4.5.1
+  
+  # App Icon Generator (build only)
+  flutter_launcher_icons: ^0.14.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.14
+
+# App Icon Configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#1E40AF"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/icon/
